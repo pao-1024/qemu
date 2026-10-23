@@ -51,3 +51,19 @@ verifies HTTPS provisioning, WebSocket audio, ASR, text responses and
 speaker output against the configured service.
 
 See https://github.com/pao-1024/pao for the build and runtime commands.
+
+WakeNet floating point
+----------------------
+
+The Xtensa FPU implements ``recip0.s``, ``rsqrt0.s`` and ``maddn.s`` used
+by the ESP-SR WakeNet model. MADDN uses round-to-nearest-even independently
+of FCR and leaves exception flags unchanged. The reciprocal seed operations
+use SoftFloat results rather than a bit-exact hardware approximation table;
+this supports functional inference, not hardware seed or timing conformance.
+Instruction semantics follow the Cadence Xtensa ISA summary:
+https://www.cadence.com/content/dam/cadence-www/global/en_US/documents/tools/silicon-solutions/compute-ip/isa-summary.pdf
+
+The PAO probe exercises the seeds, negative zero, negative square root and
+MADDN rounding/flags across reset. The wake runner injects spoken audio
+through I2S and verifies WakeNet detection followed by a cloud conversation;
+a negative run checks ordinary speech and silence without a wakeup.

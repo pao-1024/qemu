@@ -163,6 +163,28 @@ float32 HELPER(fpu2k_mul_s)(CPUXtensaState *env, float32 a, float32 b)
     return float32_mul(a, b, &env->fp_status);
 }
 
+float32 HELPER(fpu2k_recip0_s)(CPUXtensaState *env, float32 a)
+{
+    /* shortcut: rounded seed; replace for bit-exact hardware seed tests. */
+    return float32_div(float32_one, a, &env->fp_status);
+}
+
+float32 HELPER(fpu2k_rsqrt0_s)(CPUXtensaState *env, float32 a)
+{
+    /* shortcut: rounded seed; replace for bit-exact hardware seed tests. */
+    float32 root = float32_sqrt(a, &env->fp_status);
+    return float32_div(float32_one, root, &env->fp_status);
+}
+
+float32 HELPER(fpu2k_maddn_s)(CPUXtensaState *env,
+                            float32 a, float32 b, float32 c)
+{
+    float_status status = env->fp_status;
+
+    set_float_rounding_mode(float_round_nearest_even, &status);
+    return float32_muladd(b, c, a, 0, &status);
+}
+
 float32 HELPER(fpu2k_madd_s)(CPUXtensaState *env,
                              float32 a, float32 b, float32 c)
 {
