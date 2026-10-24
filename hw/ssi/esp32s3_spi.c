@@ -142,11 +142,11 @@ static void esp32s3_spi_txrx_buffer(ESP32S3SpiState *s,
     int bytes = MAX(tx_bytes, rx_bytes);
     for (int i = 0; i < bytes; ++i) {
         uint8_t byte = 0;
-        if (byte < tx_bytes) {
+        if (i < tx_bytes) {
             memcpy(&byte, tx + i, 1);
         }
         uint32_t res = ssi_transfer(s->spi, byte);
-        if (byte < rx_bytes) {
+        if (i < rx_bytes) {
             memcpy(rx + i, &res, 1);
         }
     }
@@ -261,6 +261,13 @@ static void esp32s3_spi_begin_transaction(ESP32S3SpiState *s)
         /* Only calculate and include dummy cycles when the USR_DUMMY bit is set! */
         if (s->mem_user & R_SPI_MEM_USER_USR_DUMMY_MASK) {
             esp32s3_spi_get_dummy(s, &t.dummy_bytes);
+            /* QIO/DIO clock multiple data bits per dummy cycle. */
+            if (t.cmd == 0xeb || t.cmd == 0xbb) {
+                unsigned bits = t.cmd == 0xeb ? 4 : 2;
+                unsigned cycles = FIELD_EX32(s->mem_user1, SPI_MEM_USER1,
+                                             USR_DUMMY_CYCLELEN) + 1;
+                t.dummy_bytes = (cycles * bits + 7) / 8;
+            }
         }
     }
 

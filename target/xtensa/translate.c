@@ -6620,6 +6620,37 @@ static void translate_wur_fpu2k_fsr(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_andi_i32(cpu_UR[par[0]], arg[0].in, 0xffffff80);
 }
 
+static void translate_fpu2k_recip0_s(DisasContext *dc, const OpcodeArg arg[],
+                                    const uint32_t par[])
+{
+    OpcodeArg arg32[2];
+
+    get_f32_o1_i1(arg, arg32, 0, 1);
+    gen_helper_fpu2k_recip0_s(arg32[0].out, tcg_env, arg32[1].in);
+    put_f32_o1_i1(arg, arg32, 0, 1);
+}
+
+static void translate_fpu2k_rsqrt0_s(DisasContext *dc, const OpcodeArg arg[],
+                                    const uint32_t par[])
+{
+    OpcodeArg arg32[2];
+
+    get_f32_o1_i1(arg, arg32, 0, 1);
+    gen_helper_fpu2k_rsqrt0_s(arg32[0].out, tcg_env, arg32[1].in);
+    put_f32_o1_i1(arg, arg32, 0, 1);
+}
+
+static void translate_fpu2k_maddn_s(DisasContext *dc, const OpcodeArg arg[],
+                                  const uint32_t par[])
+{
+    OpcodeArg arg32[3];
+
+    get_f32_o1_i3(arg, arg32, 0, 0, 1, 2);
+    gen_helper_fpu2k_maddn_s(arg32[0].out, tcg_env,
+                            arg32[0].in, arg32[1].in, arg32[2].in);
+    put_f32_o1_i3(arg, arg32, 0, 0, 1, 2);
+}
+
 static const XtensaOpcodeOps fpu2000_ops[] = {
     {
         .name = "abs.s",
@@ -6732,6 +6763,10 @@ static const XtensaOpcodeOps fpu2000_ops[] = {
         .name = "olt.s",
         .translate = translate_compare_s,
         .par = (const uint32_t[]){COMPARE_OLT},
+        .coprocessor = 0x1,
+    }, {
+        .name = "recip0.s",
+        .translate = translate_fpu2k_recip0_s,
         .coprocessor = 0x1,
     }, {
         .name = "rfr",
@@ -7313,7 +7348,7 @@ static const XtensaOpcodeOps fpu_ops[] = {
         .coprocessor = 0x1,
     }, {
         .name = "maddn.s",
-        .translate = translate_nop,
+        .translate = translate_fpu2k_maddn_s,
         .coprocessor = 0x1,
     }, {
         .name = "mkdadj.d",
@@ -7466,8 +7501,16 @@ static const XtensaOpcodeOps fpu_ops[] = {
         .translate = translate_rfr_s,
         .coprocessor = 0x1,
     }, {
+        .name = "recip0.s",
+        .translate = translate_fpu2k_recip0_s,
+        .coprocessor = 0x1,
+    }, {
         .name = "rfrd",
         .translate = translate_rfr_d,
+        .coprocessor = 0x1,
+    }, {
+        .name = "rsqrt0.s",
+        .translate = translate_fpu2k_rsqrt0_s,
         .coprocessor = 0x1,
     }, {
         .name = "round.d",

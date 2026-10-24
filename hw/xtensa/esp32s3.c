@@ -61,6 +61,7 @@
 #include "hw/timer/esp32s3_timg.h"
 #include "hw/timer/esp32s3_systimer.h"
 #include "hw/gpio/esp32s3_gpio.h"
+#include "hw/misc/esp32s3_peripherals.h"
 #include "hw/misc/esp32s3_xts_aes.h"
 #include "hw/misc/esp32s3_pms.h"
 #include "hw/net/can/esp32s3_twai.h"
@@ -123,6 +124,7 @@ typedef struct Esp32s3SocState {
     Esp32s3IntMatrixState intmatrix;
     ESP32S3UARTState uart[ESP32S3_UART_COUNT];
     ESP32S3GPIOState gpio;
+    Esp32S3Peripherals peripherals;
     Esp32s3RngState rng;
     Esp32S3TWAIState twai;
 
@@ -460,6 +462,11 @@ static void esp32s3_soc_realize(DeviceState *dev, Error **errp)
 
 static uint64_t esp32s3_io_read(void *opaque, hwaddr addr, unsigned int size)
 {
+    /* shortcut: ground-only ADC calibration; add an ADC model for sensors. */
+    if (ESP32S3_IO_START_ADDR + addr == 0x6000880c ||
+        ESP32S3_IO_START_ADDR + addr == 0x60008830) {
+        return 1U << 16;
+    }
 #if ESP32S3_IO_WARNING
     warn_report("[ESP32-S3] Unsupported read to $%08lx, size = %i\n", ESP32S3_IO_START_ADDR + addr, size);
 #endif
@@ -640,6 +647,8 @@ static void esp32s3_machine_init(MachineState *machine)
     object_initialize_child(OBJECT(ss), "efuse", &ss->efuse, TYPE_ESP32S3_EFUSE);
     object_initialize_child(OBJECT(ss), "jtag", &ss->jtag, TYPE_ESP32C3_JTAG);
     object_initialize_child(OBJECT(ss), "gpio", &ss->gpio, TYPE_ESP32S3_GPIO);
+    object_initialize_child(OBJECT(ss), "peripherals", &ss->peripherals,
+                            TYPE_ESP32S3_PERIPHERALS);
     object_initialize_child(OBJECT(ss), "rng", &ss->rng, TYPE_ESP32S3_RNG);
 
     object_initialize_child(OBJECT(ss), "clock", &ss->clock, TYPE_ESP32S3_CLOCK);
@@ -784,7 +793,7 @@ static void esp32s3_machine_init(MachineState *machine)
 
     /* GDMA Realization */
     {
-        object_property_set_link(OBJECT(&ss->gdma), "soc_mr", OBJECT(dram), &error_abort);
+        object_property_set_link(OBJECT(&ss->gdma), "soc_mr", OBJECT(sys_mem), &error_abort);
         sysbus_realize(SYS_BUS_DEVICE(&ss->gdma), &error_fatal);
         MemoryRegion *mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(&ss->gdma), 0);
         memory_region_add_subregion_overlap(sys_mem, DR_REG_GDMA_BASE, mr, 0);
@@ -796,6 +805,26 @@ static void esp32s3_machine_init(MachineState *machine)
                                         qdev_get_gpio_in(intmatrix_dev, ETS_DMA_OUT_CH0_INTR_SOURCE + i));
         }
    }
+
+    {
+        SysBusDevice *dev = SYS_BUS_DEVICE(&ss->peripherals);
+        const hwaddr bases[] = {DR_REG_GPIO_BASE, 0x60013000,
+                                DR_REG_RMT_BASE, 0x6000f000, 0x6002d000,
+                                0x6001e000, 0x6002c000};
+        const int sources[] = {ETS_GPIO_INTR_SOURCE, ETS_I2C_EXT0_INTR_SOURCE,
+                               ETS_RMT_INTR_SOURCE};
+        object_property_set_link(OBJECT(dev), "gdma", OBJECT(&ss->gdma),
+                                 &error_abort);
+        sysbus_realize(dev, &error_fatal);
+        for (unsigned i = 0; i < ARRAY_SIZE(bases); i++) {
+            memory_region_add_subregion_overlap(sys_mem, bases[i],
+                sysbus_mmio_get_region(dev, i), 1);
+        }
+        for (unsigned i = 0; i < ARRAY_SIZE(sources); i++) {
+            sysbus_connect_irq(dev, i,
+                               qdev_get_gpio_in(intmatrix_dev, sources[i]));
+        }
+    }
 
     /* SHA realization */
     {
@@ -869,7 +898,6 @@ static void esp32s3_machine_init(MachineState *machine)
         memory_region_add_subregion_overlap(sys_mem, esp32s3_memmap[ESP32S3_MEMREGION_FRAMEBUF].base, &ss->rgb.vram, 0);
     }
 
-    esp32s3_soc_add_unimp_device(sys_mem, "esp32s3.rmt", DR_REG_RMT_BASE, 0x1000);
     esp32s3_soc_add_unimp_device(sys_mem, "esp32s3.iomux", DR_REG_IO_MUX_BASE, 0x2000);
 
     
