@@ -53,6 +53,17 @@ static void gpio_inputs(Object *obj, Visitor *v, const char *name,
     visit_type_uint64(v, name, &value, errp);
 }
 
+static void gpio_outputs(Object *obj, Visitor *v, const char *name,
+                         void *opaque, Error **errp)
+{
+    Esp32S3Peripherals *s = ESP32S3_PERIPHERALS(obj);
+    uint64_t value = s->gpio[1] | ((uint64_t)s->gpio[4] << 32);
+    uint64_t enabled = s->gpio[8] | ((uint64_t)s->gpio[11] << 32);
+
+    value &= enabled & ((1ULL << 49) - 1);
+    visit_type_uint64(v, name, &value, errp);
+}
+
 static uint64_t gpio_read(void *opaque, hwaddr addr, unsigned size)
 {
     Esp32S3Peripherals *s = opaque;
@@ -493,6 +504,8 @@ static void peripherals_init(Object *obj)
                                    OBJ_PROP_FLAG_READ);
     object_property_add(obj, "gpio-inputs", "uint64", gpio_inputs,
                         gpio_input_set, NULL, NULL);
+    object_property_add(obj, "gpio-outputs", "uint64", gpio_outputs,
+                        NULL, NULL, NULL);
     object_property_add_uint32_ptr(obj, "led-rgb", &s->led_rgb,
                                    OBJ_PROP_FLAG_READ);
     object_property_add_str(obj, "oled-pbm", oled_image, NULL);

@@ -37,6 +37,13 @@ Read ``led-rgb`` using ``qom-get`` for the WS2812 RGB value. Read
 ``oled-pbm`` for a text PBM image of the SSD1306 display RAM. OLED contrast,
 scan direction and analog brightness are not modeled.
 
+The read-only ``gpio-outputs`` property reports direct GPIO output latches,
+gated by output-enable, as a 49-bit mask. Peripheral-routed waveforms are
+not decoded by this property. Host-side functional models can observe digital outputs
+without adding a guest register or changing GPIO state. The PAO probe uses
+it to check both H-bridge channels across all digital input combinations;
+it does not model motor mechanics or electrical characteristics.
+
 Reset clears peripheral state and rewinds the input file. Speaker output
 continues in the same file. Live migration and VM snapshots are unsupported.
 
