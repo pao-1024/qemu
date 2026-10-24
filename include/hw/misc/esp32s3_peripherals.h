@@ -24,6 +24,7 @@ struct Esp32S3Peripherals {
     MemoryRegion gpio_region, rmt_region, i2c_region;
     qemu_irq gpio_irq, rmt_irq, i2c_irq;
     Esp32S3Port i2s[2];
+    Esp32S3Port mcpwm[2];
     QEMUTimer *timer;
     uint32_t gpio[1024], rmt[1024], i2c[64];
     uint64_t inputs;

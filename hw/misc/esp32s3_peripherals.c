@@ -64,6 +64,80 @@ static void gpio_outputs(Object *obj, Visitor *v, const char *name,
     visit_type_uint64(v, name, &value, errp);
 }
 
+static uint64_t mcpwm_read(void *opaque, hwaddr addr, unsigned size)
+{
+    return ((Esp32S3Port *)opaque)->regs[addr / 4];
+}
+
+static void mcpwm_write(void *opaque, hwaddr addr, uint64_t value,
+                        unsigned size)
+{
+    ((Esp32S3Port *)opaque)->regs[addr / 4] = value;
+}
+
+static const MemoryRegionOps mcpwm_ops = {
+    .read = mcpwm_read,
+    .write = mcpwm_write,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+    .valid = { .min_access_size = 4, .max_access_size = 4 },
+};
+
+static double mcpwm_duty(Esp32S3Peripherals *s, unsigned signal)
+{
+    unsigned unit = (signal - 160) / 6;
+    unsigned oper = ((signal - 160) % 6) / 2;
+    unsigned gen = (signal - 160) % 2;
+    uint32_t *regs = s->mcpwm[unit].regs;
+    unsigned base = (0x3c + oper * 0x38) / 4;
+    unsigned force = (regs[base + 4] >> (6 + gen * 2)) & 3;
+    unsigned timer = (regs[0x38 / 4] >> (oper * 2)) & 3;
+    uint32_t action = regs[base + 5 + gen];
+
+    if (force == 1 || force == 2) {
+        return force - 1;
+    }
+    /*
+     * shortcut: normalized duty for continuous up-counting TEZ-high/TEA-low;
+     * add edge timing and other actions when a guest needs them.
+     */
+    if (timer >= 3 || (regs[(0x08 + timer * 0x10) / 4] & 31) != 10 ||
+        (action & 0xfff) != 0x12) {
+        return -1;
+    }
+    unsigned period = ((regs[(0x04 + timer * 0x10) / 4] >> 8) & 0xffff) + 1;
+    unsigned compare = regs[base + 1] & 0xffff;
+
+    return MIN(compare, period) / (double)period;
+}
+
+static char *pin_duty(Object *obj, Error **errp)
+{
+    Esp32S3Peripherals *s = ESP32S3_PERIPHERALS(obj);
+    uint64_t enabled = s->gpio[8] | ((uint64_t)s->gpio[11] << 32);
+    uint64_t value = s->gpio[1] | ((uint64_t)s->gpio[4] << 32);
+    GString *json = g_string_new("[");
+
+    for (unsigned pin = 0; pin < 49; pin++) {
+        uint32_t config = s->gpio[(0x554 + pin * 4) / 4];
+        unsigned signal = config & 0x1ff;
+        double duty = 0;
+        char number[G_ASCII_DTOSTR_BUF_SIZE];
+
+        if ((enabled >> pin) & 1) {
+            duty = signal == 256 ? (value >> pin) & 1 :
+                   signal >= 160 && signal < 172 ?
+                   mcpwm_duty(s, signal) : -1;
+            if (duty >= 0 && (config & (1U << 9))) {
+                duty = 1 - duty;
+            }
+        }
+        g_string_append_printf(json, "%s%s", pin ? "," : "",
+            duty < 0 ? "null" : g_ascii_dtostr(number, sizeof(number), duty));
+    }
+    g_string_append_c(json, ']');
+    return g_string_free(json, false);
+}
+
 static uint64_t gpio_read(void *opaque, hwaddr addr, unsigned size)
 {
     Esp32S3Peripherals *s = opaque;
@@ -432,6 +506,7 @@ static void peripherals_reset(DeviceState *dev)
     memset(s->rmt, 0, sizeof(s->rmt));
     memset(s->oled, 0, sizeof(s->oled));
     for (unsigned i = 0; i < 2; i++) {
+        memset(s->mcpwm[i].regs, 0, sizeof(s->mcpwm[i].regs));
         memset(s->i2s[i].regs, 0, sizeof(s->i2s[i].regs));
         memset(s->i2s[i].cursor, 0, sizeof(s->i2s[i].cursor));
         memset(s->i2s[i].link, 0, sizeof(s->i2s[i].link));
@@ -489,6 +564,11 @@ static void peripherals_init(Object *obj)
                              &s->i2s[i], "s3-i2s", 0x1000);
         sysbus_init_mmio(dev, &s->i2s[i].region);
     }
+    for (unsigned i = 0; i < 2; i++) {
+        memory_region_init_io(&s->mcpwm[i].region, obj, &mcpwm_ops,
+                             &s->mcpwm[i], "s3-mcpwm", 0x1000);
+        sysbus_init_mmio(dev, &s->mcpwm[i].region);
+    }
     sysbus_init_irq(dev, &s->gpio_irq);
     sysbus_init_irq(dev, &s->i2c_irq);
     sysbus_init_irq(dev, &s->rmt_irq);
@@ -509,6 +589,7 @@ static void peripherals_init(Object *obj)
     object_property_add_uint32_ptr(obj, "led-rgb", &s->led_rgb,
                                    OBJ_PROP_FLAG_READ);
     object_property_add_str(obj, "oled-pbm", oled_image, NULL);
+    object_property_add_str(obj, "pin-duty", pin_duty, NULL);
 }
 
 static Property peripherals_props[] = {

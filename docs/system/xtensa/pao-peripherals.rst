@@ -10,7 +10,7 @@ I2S0, one WS2812 on GPIO48, a GPIO0 button, and a 128x64 SSD1306 at I2C0
 address 0x3c. I2S samples use the board's mono 32-bit slots: microphone
 PCM is shifted left 12 bits and speaker PCM is shifted right 16 bits.
 This is a functional model of this board, not a general I2S format or
-electrical timing model. GPIO matrix routing, analog audio characteristics,
+electrical timing model. General GPIO matrix routing, analog audio characteristics,
 Wi-Fi radio, arbitrary I2C devices, and RMT receive are not modeled.
 
 Audio files
@@ -43,6 +43,13 @@ not decoded by this property. Host-side functional models can observe digital ou
 without adding a guest register or changing GPIO state. The PAO probe uses
 it to check both H-bridge channels across all digital input combinations;
 it does not model motor mechanics or electrical characteristics.
+
+MCPWM0/1 register storage supports the PAO Motor driver's continuous up-counting,
+TEZ-high/compare-A-low output and continuous forced levels. Read-only
+``pin-duty`` returns a JSON array of 49 normalized duties: disabled GPIOs are
+zero, direct outputs are zero or one, and GPIO matrix signals 160--171 select
+MCPWM generators. Unsupported routes/actions return null. This functional
+observation does not generate PWM edges, interrupts, dead time or motor RPM.
 
 Reset clears peripheral state and rewinds the input file. Speaker output
 continues in the same file. Live migration and VM snapshots are unsupported.

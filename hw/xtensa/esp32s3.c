@@ -809,7 +809,8 @@ static void esp32s3_machine_init(MachineState *machine)
     {
         SysBusDevice *dev = SYS_BUS_DEVICE(&ss->peripherals);
         const hwaddr bases[] = {DR_REG_GPIO_BASE, 0x60013000,
-                                DR_REG_RMT_BASE, 0x6000f000, 0x6002d000};
+                                DR_REG_RMT_BASE, 0x6000f000, 0x6002d000,
+                                0x6001e000, 0x6002c000};
         const int sources[] = {ETS_GPIO_INTR_SOURCE, ETS_I2C_EXT0_INTR_SOURCE,
                                ETS_RMT_INTR_SOURCE};
         object_property_set_link(OBJECT(dev), "gdma", OBJECT(&ss->gdma),
